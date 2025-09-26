@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server';
 // Get specific batch with pagination by generation rounds
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const batchId = params.id;
+    const { id: batchId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const round = parseInt(searchParams.get('round') || '1');
 
