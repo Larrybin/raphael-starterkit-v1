@@ -407,7 +407,7 @@ export default function Home() {
                   {loading ? 'Loading...' : !user ? (hasTriedFree ? '🔒 Sign In for Unlimited Names' : '🎁 Get Your Free Chinese Name') : '🎯 Generate Chinese Name'}
                 </button>
                 <a 
-                  href="#chinese-name-pricing"
+                  href="#pricing"
                   className="inline-flex items-center justify-center h-14 px-8 text-lg font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   View Premium Features →
