@@ -155,6 +155,10 @@ export async function createCheckoutSession(
     if (process.env.CREEM_SUCCESS_URL) {
       requestBody.success_url = process.env.CREEM_SUCCESS_URL;
     }
+    // 可选：取消跳转 URL
+    if (process.env.CREEM_CANCEL_URL) {
+      requestBody.cancel_url = process.env.CREEM_CANCEL_URL;
+    }
 
     // 添加折扣码（如果有）
     if (discountCode) {

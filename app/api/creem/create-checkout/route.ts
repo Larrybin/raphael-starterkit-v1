@@ -6,8 +6,8 @@ import { createCheckoutSession } from "@/app/actions";
 type Body = {
   productId?: string;
   productType?: string; // "subscription" | "credits" | custom labels like "chinese-name-credits"
-  tierId?: string; // optional tier id to map from config
-  quantity?: number; // optional credits quantity
+  tierId?: string; // preferred: map from config tiers
+  // quantity?: number; // deprecated: do NOT trust client-provided quantity
   discountCode?: string;
 };
 
@@ -30,35 +30,38 @@ export async function POST(request: Request) {
       normalizedType === "credits" || normalizedType.includes("credits");
     const isSubscription = normalizedType === "subscription";
 
-    // Prefer explicit productId if provided
+    // Build whitelists from config
+    const allCreditTiers = CREDITS_TIERS;
+    const allSubTiers = SUBSCRIPTION_TIERS;
+    const allowedProductIds = new Set([
+      ...allCreditTiers.map((t) => t.productId),
+      ...allSubTiers.map((t) => t.productId),
+    ]);
+
+    // Resolve product based on tierId or whitelisted productId
     let productId = body.productId?.trim();
     let creditsAmount: number | undefined = undefined;
 
     if (!productId) {
       // Try to map by tierId from config
       if (body.tierId) {
-        if (isCredits || !isSubscription) {
-          const tier = CREDITS_TIERS.find((t) => t.id === body.tierId);
-          if (tier) {
-            productId = tier.productId;
-            creditsAmount = tier.creditAmount;
-          }
-        } else if (isSubscription) {
-          const tier = SUBSCRIPTION_TIERS.find((t) => t.id === body.tierId);
-          if (tier) {
-            productId = tier.productId;
-          }
+        const creditTier = allCreditTiers.find((t) => t.id === body.tierId);
+        const subTier = allSubTiers.find((t) => t.id === body.tierId);
+        if (creditTier) {
+          productId = creditTier.productId;
+          creditsAmount = creditTier.creditAmount;
+        } else if (subTier) {
+          productId = subTier.productId;
         }
       }
 
       // If still not found, pick a sensible default from config
       if (!productId) {
         if (isSubscription) {
-          const tier =
-            SUBSCRIPTION_TIERS.find((t) => t.featured) || SUBSCRIPTION_TIERS[0];
+          const tier = allSubTiers.find((t) => t.featured) || allSubTiers[0];
           productId = tier?.productId;
         } else {
-          const tier = CREDITS_TIERS.find((t) => t.featured) || CREDITS_TIERS[0];
+          const tier = allCreditTiers.find((t) => t.featured) || allCreditTiers[0];
           productId = tier?.productId;
           creditsAmount = tier?.creditAmount;
         }
@@ -75,16 +78,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate provided productId is whitelisted in config
+    if (!allowedProductIds.has(productId)) {
+      return NextResponse.json(
+        { error: "Invalid productId. Must be defined in config/subscriptions.ts" },
+        { status: 400 }
+      );
+    }
+
     // Determine final product type and credits amount
     const productType: "subscription" | "credits" = isSubscription
       ? "subscription"
       : "credits";
-    if (productType === "credits") {
-      // Allow request to override the credit amount if provided
-      if (typeof body.quantity === "number" && body.quantity > 0) {
-        creditsAmount = body.quantity;
-      }
-    }
+    // If credits, do NOT trust client-provided quantity; use config-derived creditsAmount only
 
     // Safety checks
     if (!user.email) {

@@ -131,6 +131,22 @@ export async function addCreditsToCustomer(
   description?: string
 ) {
   const supabase = createServiceRoleClient();
+  // Idempotency: if this order was already processed, return current credits
+  if (creemOrderId) {
+    const { data: existingHistory } = await supabase
+      .from("credits_history")
+      .select("id")
+      .eq("creem_order_id", creemOrderId)
+      .maybeSingle();
+    if (existingHistory) {
+      const { data: current } = await supabase
+        .from("customers")
+        .select("credits")
+        .eq("id", customerId)
+        .single();
+      return current?.credits || 0;
+    }
+  }
   // Start a transaction
   const { data: client } = await supabase
     .from("customers")

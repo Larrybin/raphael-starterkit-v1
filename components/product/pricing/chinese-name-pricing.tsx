@@ -8,7 +8,8 @@ import { Check, Sparkles, Crown, Gift } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { CREDITS_TIERS } from "@/config/subscriptions";
 
 interface PricingTier {
   id: string;
@@ -23,7 +24,13 @@ interface PricingTier {
   buttonVariant: "default" | "outline";
 }
 
-const pricingTiers: PricingTier[] = [
+// Dynamically map featured credits tier from config for accurate pricing
+const buildPricingTiers = (): PricingTier[] => {
+  const featured = CREDITS_TIERS.find(t => t.featured) || CREDITS_TIERS[0];
+  const price = featured?.priceMonthly ?? "$-";
+  const credits = featured?.creditAmount ?? 0;
+
+  return [
   {
     id: "free-trial",
     name: "Free Trial",
@@ -44,11 +51,11 @@ const pricingTiers: PricingTier[] = [
   {
     id: "credit-pack",
     name: "Credit Pack",
-    price: "$5",
-    credits: 1000,
+    price: price,
+    credits: credits,
     description: "Best value for regular users",
     features: [
-      "1000 credits included",
+      `${credits} credits included`,
       "Standard & Premium generation",
       "Personality-based matching",
       "Custom name preferences",
@@ -62,6 +69,7 @@ const pricingTiers: PricingTier[] = [
     buttonVariant: "default"
   }
 ];
+};
 
 interface ChineseNamePricingProps {
   onScrollToForm?: () => void;
@@ -72,6 +80,7 @@ export default function ChineseNamePricing({ onScrollToForm }: ChineseNamePricin
   const { user } = useUser();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
+  const pricingTiers = useMemo(() => buildPricingTiers(), []);
 
   const handlePurchase = async (tierId: string) => {
     if (tierId === "free-trial") {
@@ -108,8 +117,9 @@ export default function ChineseNamePricing({ onScrollToForm }: ChineseNamePricin
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          productType: 'chinese-name-credits',
-          quantity: 1000, // 1000 credits
+          productType: 'credits',
+          // Map to the configured featured credits tier to ensure consistency
+          tierId: (CREDITS_TIERS.find(t => t.featured) || CREDITS_TIERS[0])?.id,
           userId: user.id,
         }),
       });
