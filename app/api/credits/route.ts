@@ -47,7 +47,7 @@ export async function GET() {
           user_id: user.id,
           email: user.email || 'unknown@example.com',
           credits: 3, // 新用户赠送3积分
-          creem_customer_id: `new_user_${user.id}`,
+
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           metadata: {

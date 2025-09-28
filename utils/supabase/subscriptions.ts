@@ -32,6 +32,31 @@ export async function createOrUpdateCustomer(
     return existingCustomer.id;
   }
 
+  // Merge strategy: if not found by creem_customer_id, try locate by user_id and upgrade the record
+  const { data: byUser, error: byUserError } = await supabase
+    .from("customers")
+    .select()
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (byUserError && byUserError.code !== "PGRST116") {
+    throw byUserError;
+  }
+
+  if (byUser) {
+    const { error: upgradeError } = await supabase
+      .from("customers")
+      .update({
+        creem_customer_id: creemCustomer.id,
+        email: creemCustomer.email,
+        name: creemCustomer.name,
+        country: creemCustomer.country,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", byUser.id);
+    if (upgradeError) throw upgradeError;
+    return byUser.id;
+  }
+
   const { data: newCustomer, error } = await supabase
     .from("customers")
     .insert({
