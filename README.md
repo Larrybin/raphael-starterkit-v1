@@ -285,3 +285,33 @@ npm run dev
 ## 支持与联系
 
 如果您有任何问题或需要支持，请通过微信联系我们。
+
+## 运维：支付数据一致性与清理
+
+- Webhook 签名调试
+  - 仅在测试环境短暂启用：设置环境变量 `CREEM_LOG_WEBHOOK_SIGNATURE=1`，并确保 `NODE_ENV` 不是 `production`。路由 `api/webhooks/creem` 将打印 `creem-signature` 请求头，便于确认签名格式。
+  - 生产环境请勿开启该开关。
+
+- 幂等唯一索引（防止重复加分）
+  - 在 Supabase SQL 控制台执行：
+    - `CREATE UNIQUE INDEX IF NOT EXISTS credits_history_creem_order_id_unique ON public.credits_history(creem_order_id) WHERE creem_order_id IS NOT NULL;`
+  - 或运行仓库中的迁移：`supabase/migrations/20250201000000_add_unique_index_credits_history_order.sql`
+
+- 预览重复 customers（不改数据）
+  - 查看重复用户：
+    - `SELECT user_id, COUNT(*) AS cnt FROM public.customers GROUP BY user_id HAVING COUNT(*) > 1 ORDER BY cnt DESC;`
+  - 查看重复用户详情：
+    - `SELECT c.* FROM public.customers c JOIN (SELECT user_id FROM public.customers GROUP BY user_id HAVING COUNT(*)>1) d ON c.user_id=d.user_id ORDER BY c.user_id, c.created_at;`
+  - 预览“临时/真实”成对记录：
+    - `WITH dup AS ( SELECT user_id, MIN(id) FILTER (WHERE creem_customer_id LIKE 'new_user_%') AS temp_id, MIN(id) FILTER (WHERE creem_customer_id IS NOT NULL AND creem_customer_id NOT LIKE 'new_user_%') AS real_id FROM public.customers GROUP BY user_id ) SELECT * FROM dup WHERE temp_id IS NOT NULL AND real_id IS NOT NULL;`
+  - 预估待迁移的积分历史行数：
+    - `WITH pairs AS ( SELECT user_id, MIN(id) FILTER (WHERE creem_customer_id LIKE 'new_user_%') AS temp_id, MIN(id) FILTER (WHERE creem_customer_id IS NOT NULL AND creem_customer_id NOT LIKE 'new_user_%') AS real_id FROM public.customers GROUP BY user_id ) SELECT COUNT(*) AS rows_to_move FROM public.credits_history ch JOIN pairs p ON ch.customer_id = p.temp_id WHERE p.temp_id IS NOT NULL AND p.real_id IS NOT NULL;`
+
+- 执行清理（慎用，先在非生产验证）
+  - 合并临时行到真实行，将积分历史与余额归并到真实行，并删除临时行：
+    - `BEGIN; WITH pairs AS ( SELECT user_id, MIN(id) FILTER (WHERE creem_customer_id LIKE 'new_user_%') AS temp_id, MIN(id) FILTER (WHERE creem_customer_id IS NOT NULL AND creem_customer_id NOT LIKE 'new_user_%') AS real_id FROM public.customers GROUP BY user_id ), to_merge AS ( SELECT * FROM pairs WHERE temp_id IS NOT NULL AND real_id IS NOT NULL ) UPDATE public.credits_history ch SET customer_id = tm.real_id FROM to_merge tm WHERE ch.customer_id = tm.temp_id; UPDATE public.customers r SET credits = r.credits + COALESCE(t.credits, 0), updated_at = timezone('utc'::text, now()) FROM public.customers t JOIN to_merge tm ON t.id = tm.temp_id AND r.id = tm.real_id; DELETE FROM public.customers c USING to_merge tm WHERE c.id = tm.temp_id; COMMIT;`
+
+- 执行后自检
+  - 重查是否仍有重复：
+    - `SELECT user_id, COUNT(*) FROM public.customers GROUP BY user_id HAVING COUNT(*) > 1;`
+  - 抽查某用户余额与 credits_history 是否正确合并。

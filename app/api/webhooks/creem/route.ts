@@ -17,6 +17,17 @@ export async function POST(request: Request) {
     const headersList = headers();
     const signature = (await headersList).get("creem-signature") || "";
 
+    // Optional debug: print signature header only when explicitly enabled and not in production
+    if (
+      process.env.CREEM_LOG_WEBHOOK_SIGNATURE === "1" &&
+      process.env.NODE_ENV !== "production"
+    ) {
+      console.log(
+        "[creem webhook] signature header (debug only):",
+        signature
+      );
+    }
+
     // Verify the webhook signature
     if (
       !signature ||
